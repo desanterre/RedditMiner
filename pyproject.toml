@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "reddit-miner"
+version = "0.1.0"
+description = "CLI tool to scrape Reddit comments into Excel with progress bar and colored logging"
+authors = ["Your Name <you@example.com>"]
+packages = [{include = "reddit_miner", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+praw = "^7.6.0"
+pandas = "^2.3.0"
+tqdm = "^4.66.1"
+click = "^8.2.1"
+
+[tool.poetry.scripts]
+reddit-miner = "reddit_miner.cli:main"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
