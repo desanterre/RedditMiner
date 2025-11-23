@@ -17,6 +17,8 @@ faiss-cpu = { version = "^1.13.0", markers = "python_version < '3.15'" }
 torch = { version = ">=2.2,<3.0" }
 gpt4all = "^2.8.2"
 openpyxl = "^3.1.5"
+alembic = "^1.17.2"
+psycopg2 = "^2.9.11"
 
 [tool.poetry.scripts]
 reddit-miner = "reddit_miner.cli:main"
