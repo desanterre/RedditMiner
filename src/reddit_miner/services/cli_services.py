@@ -1,27 +1,58 @@
 import os
-import praw
 from colorama import Fore
-from datetime import datetime
+from reddit_miner.adapters.reddit.fetcher import fetch_comments
+from reddit_miner.adapters.db.db_exporter import export_to_postgres, get_comments_for_user
+from reddit_miner.services.exporters.excel_exporter import export_to_excel
+from reddit_miner.services.user_simulator.user_simulator import UserSimulator
+import praw
 
 def get_reddit_client():
-    """Return a PRAW Reddit instance using environment variables."""
-    client_id = os.environ.get("REDDIT_CLIENT_ID")
-    client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
-
-    if not client_id or not client_secret:
-        raise RuntimeError("REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET must be set in your environment")
-
     return praw.Reddit(
-        client_id=client_id,
-        client_secret=client_secret,
-        user_agent="RedditMiner/1.0"
+        client_id=os.getenv("REDDIT_CLIENT_ID", "YOUR_CLIENT_ID"),
+        client_secret=os.getenv("REDDIT_CLIENT_SECRET", "YOUR_CLIENT_SECRET"),
+        user_agent=os.getenv("REDDIT_USER_AGENT", "reddit-miner")
     )
 
-
 def print_startup_info(usernames):
-    """Print info at the start of the CLI command."""
-    client_id = os.environ.get("REDDIT_CLIENT_ID")
-    print(Fore.CYAN + f"RedditMiner v0.1.0")
-    print(Fore.CYAN + f"Run timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(Fore.CYAN + f"Using Reddit App: {Fore.YELLOW}{client_id}{Fore.CYAN}")
-    print(Fore.CYAN + f"Usernames: {', '.join(usernames)}\n")
+    print(Fore.MAGENTA + f"Starting RedditMiner for users: {', '.join(usernames)}")
+
+def fetch_and_export_excel(usernames, limit=None, output=None):
+    print_startup_info(usernames)
+    reddit = get_reddit_client()
+
+    all_comments = []
+    for username in usernames:
+        print(Fore.GREEN + f"\nFetching comments for user: {Fore.YELLOW}{username}{Fore.GREEN}")
+        comments = fetch_comments(reddit, username, limit)
+        all_comments.extend(comments)
+        print(Fore.GREEN + f"Fetched {len(comments)} comments for {Fore.YELLOW}{username}")
+
+    filename = output or f"reddit_comments_{'_'.join(usernames)}.xlsx"
+    export_to_excel(all_comments, filename)
+    print(Fore.MAGENTA + f"\nSaved {len(all_comments)} comments to {filename}")
+
+def fetch_and_export_db(usernames, limit=None):
+    print_startup_info(usernames)
+    reddit = get_reddit_client()
+
+    all_comments = []
+    for username in usernames:
+        print(Fore.GREEN + f"\nFetching comments for user: {Fore.YELLOW}{username}{Fore.GREEN}")
+        comments = fetch_comments(reddit, username, limit)
+        all_comments.extend(comments)
+        print(Fore.GREEN + f"Fetched {len(comments)} comments for {Fore.YELLOW}{username}")
+
+    export_to_postgres(all_comments)
+    print(Fore.MAGENTA + f"\nExported {len(all_comments)} comments to PostgreSQL")
+
+def simulate_user(username, model_path=None):
+    comments = get_comments_for_user(username)  # returns DataFrame
+    if comments.empty:
+        print(Fore.RED + f"No comments found for user {username}")
+        return
+
+    analyzer = UserSimulator(model_path=model_path)
+    analyzer.load_from_dataframe(comments)
+    analyzer.load_model()
+    analyzer.chat()
+

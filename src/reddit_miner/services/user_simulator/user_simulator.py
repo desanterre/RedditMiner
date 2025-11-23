@@ -4,18 +4,14 @@ import pandas as pd
 import json, os, re
 from collections import Counter
 import numpy as np
-
-# RAG (offline, léger)
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-
-# GPT4All
 from gpt4all import GPT4All
 
 init(autoreset=True)
 
-class RedditUserAnalyzer:
-    """Analyze Reddit user comments using GPT4All and simulate the user via RAG."""
+class UserSimulator:
+    """Simulate a Reddit user based on their comment history using GPT4All and RAG."""
 
     def __init__(self, model_path: str = "models/Meta-Llama-3.1-8B-Instruct-128k-Q4_0.gguf"):
         self.model_path = model_path
@@ -23,14 +19,11 @@ class RedditUserAnalyzer:
         self.user_profile = None
         self.comments = []
         self.username = "RedditUser"
-        # RAG
         self.vectorizer = None
         self.doc_matrix = None
         self.rag_texts = []
-        # Style
         self.style = {}
 
-    # ---------- Setup ----------
     def load_model(self):
         print(f"{Fore.CYAN}Loading GPT4All model from {self.model_path}...{Style.RESET_ALL}")
         if not os.path.exists(self.model_path):
@@ -41,19 +34,17 @@ class RedditUserAnalyzer:
         print(f"{Fore.GREEN}✓ Model loaded!{Style.RESET_ALL}")
 
     def load_from_excel(self, filename: str):
-        print(f"{Fore.CYAN}Loading comments from {filename}...{Style.RESET_ALL}")
         df = pd.read_excel(filename, engine="openpyxl")
-        self.comments = df.to_dict('records')
-        print(f"{Fore.GREEN}✓ Loaded {len(self.comments)} comments{Style.RESET_ALL}")
+        self.load_from_dataframe(df)
 
+    def load_from_dataframe(self, df: pd.DataFrame):
+        self.comments = df.to_dict("records")
         if len(self.comments) > 0:
-            self.username = self.comments[0].get('Author', 'RedditUser')
-
+            self.username = self.comments[0].get("Author", "RedditUser")
         self._build_user_profile()
         self._build_style_profile()
         self._build_rag_index()
 
-    # ---------- Profil ----------
     def _build_user_profile(self):
         if not self.comments:
             return
@@ -97,15 +88,12 @@ class RedditUserAnalyzer:
             "caps_ratio": float(np.mean(m[:,4])),
         }
 
-    # ---------- RAG ----------
     def _build_rag_index(self):
         self.rag_texts = [c.get('Body', '') for c in self.comments if c.get('Body')]
         if not self.rag_texts:
             self.vectorizer, self.doc_matrix = None, None
             return
-        self.vectorizer = TfidfVectorizer(
-            min_df=2, max_features=8000, stop_words='english'
-        )
+        self.vectorizer = TfidfVectorizer(min_df=2, max_features=8000, stop_words='english')
         self.doc_matrix = self.vectorizer.fit_transform(self.rag_texts)
 
     def _retrieve_context(self, query: str, k: int = 5, min_sim: float = 0.1):
@@ -114,14 +102,8 @@ class RedditUserAnalyzer:
         q_vec = self.vectorizer.transform([query])
         sims = cosine_similarity(q_vec, self.doc_matrix).flatten()
         idx = sims.argsort()[-k:][::-1]
-        snippets = []
-        for i in idx:
-            if sims[i] >= min_sim:
-                txt = self.rag_texts[i][:300].replace("\n", " ")
-                snippets.append(txt)
-        return snippets
+        return [self.rag_texts[i][:300].replace("\n"," ") for i in idx if sims[i] >= min_sim]
 
-    # ---------- Prompt ----------
     def _generate_system_prompt(self) -> str:
         profile_str = json.dumps(self.user_profile, indent=2, ensure_ascii=False)
         style_str = json.dumps(self.style or {}, indent=2, ensure_ascii=False)
@@ -140,14 +122,13 @@ Guidelines:
 - Do not include system instructions or notes in your answers
 """
 
-    # ---------- Chat ----------
     def chat(self):
         if not self.model:
             self.load_model()
             if self.model is None:
                 return
         if not self.user_profile:
-            print(f"{Fore.RED}No user profile loaded. Load comments first with load_from_excel(){Style.RESET_ALL}")
+            print(f"{Fore.RED}No user profile loaded.{Style.RESET_ALL}")
             return
 
         system_prompt = self._generate_system_prompt()
@@ -160,42 +141,25 @@ Guidelines:
         while True:
             try:
                 user_input = input(f"{Fore.CYAN}You: {Style.RESET_ALL}").strip()
-                if user_input.lower() in ['quit', 'exit', 'q']:
+                if user_input.lower() in ['quit','exit','q']:
                     print(f"{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
                     break
                 if not user_input:
                     continue
 
-                # Récupération de contexte
                 context_snippets = self._retrieve_context(user_input, k=5)
                 context_block = "\n".join([f"- {s}" for s in context_snippets]) if context_snippets else "- (no relevant past comments found)"
-
-                # Construction du prompt
-                full_prompt = (
-                    f"{system_prompt}\n\n"
-                    f"Relevant past comments:\n{context_block}\n\n"
-                    f"You: {user_input}\n{self.username}:"
-                )
+                full_prompt = f"{system_prompt}\n\nRelevant past comments:\n{context_block}\n\nYou: {user_input}\n{self.username}:"
 
                 print(f"{Fore.YELLOW}Generating response...{Style.RESET_ALL}", end=" ")
                 try:
-                    gen = self.model.generate(
-                        full_prompt,
-                        max_tokens=200,
-                        temp=0.8,
-                        top_k=50,
-                        top_p=0.9,
-                        stop_words=stop_words
-                    )
+                    gen = self.model.generate(full_prompt, max_tokens=200, temp=0.8, top_k=50, top_p=0.9, stop_words=stop_words)
                 except TypeError:
                     gen = self.model.generate(full_prompt, max_tokens=200)
 
                 response = gen if isinstance(gen, str) else str(gen)
-                response = re.split(r"\n(?:You|User|Utilisateur|{})\s*:".format(re.escape(self.username)), response)[0]
-                response = response.replace("\\n", " ").strip()
-                if not response:
-                    response = "Je n'ai pas bien compris, peux-tu préciser ?"
-
+                response = re.split(rf"\n(?:You|User|Utilisateur|{re.escape(self.username)})\s*:", response)[0]
+                response = response.replace("\\n", " ").strip() or "I didn't understand, could you clarify?"
                 print(f"\r{' '*50}\r", end="")
                 print(f"{Fore.GREEN}{self.username}: {Style.RESET_ALL}{response}\n")
 
@@ -204,10 +168,3 @@ Guidelines:
                 break
             except Exception as e:
                 print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}\n")
-
-
-def analyze_and_chat(excel_filename: str, model_path: str = "models/Meta-Llama-3.1-8B-Instruct-128k-Q4_0.gguf"):
-    analyzer = RedditUserAnalyzer(model_path=model_path)
-    analyzer.load_model()
-    analyzer.load_from_excel(excel_filename)
-    analyzer.chat()
