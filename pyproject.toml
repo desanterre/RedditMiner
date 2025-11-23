@@ -3,17 +3,29 @@ name = "reddit-miner"
 version = "0.1.0"
 description = "CLI tool to scrape Reddit comments into Excel with progress bar and colored logging"
 authors = ["Your Name <you@example.com>"]
-packages = [{include = "reddit_miner", from = "src"}]
+packages = [{ include = "reddit_miner", from = "src" }]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.11,<3.13"
 praw = "^7.6.0"
 pandas = "^2.3.0"
 tqdm = "^4.66.1"
 click = "^8.2.1"
+colorama = "^0.4.6"
+sentence-transformers = "^2.2.2"
+faiss-cpu = { version = "^1.13.0", markers = "python_version < '3.15'" }
+torch = { version = ">=2.2,<3.0" }
+gpt4all = "^2.8.2"
+openpyxl = "^3.1.5"
 
 [tool.poetry.scripts]
 reddit-miner = "reddit_miner.cli:main"
+
+# ➜ index officiel PyTorch pour CPU/MPS sur macOS arm64
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "supplemental"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
