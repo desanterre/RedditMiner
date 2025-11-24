@@ -16,3 +16,9 @@ class CommentORM(Base):
     date_utc = Column(DateTime)
     permalink = Column(Text)
     body = Column(Text)
+
+    # ---- AI moderation fields ----
+    ai_label = Column(Text)             # EXTREMIST / TOXIC / SAFE
+    ai_explanation = Column(Text)       # text explaining why the label was chosen
+    ai_model = Column(Text)             # model name or path used
+    ai_timestamp = Column(DateTime)     # when the AI processed the comment
